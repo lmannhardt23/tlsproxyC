@@ -21,10 +21,10 @@
 
 int main(int argc, char *argv[])
 {
-	const char *HOST, *PORT;
+	const char *PORT1, *HOST, *PORT2;
 	int ret = 1, len;
 	int exit_code = EXIT_FAILURE;
-	mbedtls_net_context server_fd;
+	mbedtls_net_context server_fd, client_fd, listen_fd;
 	uint32_t flags;
 	unsigned char buf[1024];
 	const char *pers = "ssl_client1";
@@ -34,18 +34,24 @@ int main(int argc, char *argv[])
 	mbedtls_ssl_config conf;
 	mbedtls_x509_crt cacert;
 
-	if (argc != 3) {
-		fprintf(stderr, "usage: %s HOST PORT\n", argv[0]);
+	char http_req[102401]; //max bytes for request plus null terminator 
+	int req_len = 0;
+
+	if (argc != 4) {
+		fprintf(stderr, "usage: %s PORT HOST PORT\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
 
-	HOST = argv[1];
-	PORT = argv[2];
+	PORT1 = argv[1];
+	HOST = argv[2];
+	PORT2 = argv[3];
 
 	/*
 	* 0. Initialize the random-number generator and the session data.
 	*/
 	mbedtls_net_init(&server_fd);
+	mbedtls_net_init(&client_fd);
+	mbedtls_net_init(&listen_fd);
 	mbedtls_ssl_init(&ssl);
 	mbedtls_ssl_config_init(&conf);
 	mbedtls_x509_crt_init(&cacert);
@@ -79,10 +85,10 @@ int main(int argc, char *argv[])
 	/*
 	 * 1. Start the connection.
 	 */
-	printf("  . Connecting to tcp/%s/%s...", HOST, PORT);
+	printf("  . Connecting to tcp/%s/%s...", HOST, PORT2);
 	fflush(stdout);
 
-	if ((ret = mbedtls_net_connect(&server_fd, HOST, PORT, MBEDTLS_NET_PROTO_TCP)) != 0) {
+	if ((ret = mbedtls_net_connect(&server_fd, HOST, PORT2, MBEDTLS_NET_PROTO_TCP)) != 0) {
 		printf(" failed\n  ! mbedtls_net_connect returned %d\n\n", ret);
 		goto exit;
 	}
@@ -159,17 +165,64 @@ int main(int argc, char *argv[])
 	printf("  > Write to server:");
 	fflush(stdout);
 
-	len = sprintf((char *) buf, GET_REQUEST);
+	//remove request replace with bind and listen
+	//len = sprintf((char *) buf, GET_REQUEST);
 
-	while ((ret = mbedtls_ssl_write(&ssl, buf, len)) <= 0) {
-		if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
-			printf(" failed\n  ! mbedtls_ssl_write returned %d\n\n", ret);
+	if((ret = mbedtls_net_bind(&listen_fd, NULL, PORT1, MBEDTLS_NET_PROTO_TCP)) != 0) {
+		printf(" failed\n  ! mbedtls_net_bind returned %d\n\n", ret);
+		goto exit;
+	}
+	//if this executed, we have connected successfully
+	printf(" ok (listening on %s)\n", PORT1);
+	printf("Waiting for connection on %s\n", PORT1);
+
+	//check connection
+	if((ret = mbedtls_net_accept(&listen_fd, &client_fd, NULL, 0, NULL)) != 0){
+		printf(" failed\n ! mbedtls_net_accept returned %d\n\n", ret);
+		goto exit;
+	}
+	//connect success
+	printf(" . Client Connected.");
+
+	//Read from client until \r\n\r\n or buffer is full
+	req_len = 0;
+	memset(http_req, 0, sizeof(http_req));
+	while (req_len < 10241){
+		int toret = mbedtls_net_recv(&client_fd, http_req + req_len, 1);
+		if(toret <= 0){
+			if(toret == 0){
+				printf("Closed Connection");
+			}else{
+				printf("mbedtls_net_recv returned %d\n", toret);
+			}
+			break;
+		}
+		req_len += toret;
+		http_req[req_len] = '\0';
+		if(req_len >= 4 && strstr(http_req, "\r\n\r\n") != NULL){
+			break;
+		}
+	}
+	if(req_len == 0){
+		printf("No data read to return.");
+	}
+
+	//Send to HTTP server
+	{
+		int total = 0;
+		while(total < req_len){
+			ret = mbedtls_ssl_write(&ssl, http_req + total, req_len - total);
+			if(ret > 0){
+				total += ret; //update written bites
+				continue;
+			}
+			if(ret == MBEDTLS_ERR_SSL_WANT_READ || MBEDTLS_ERR_SSL_WANT_WRITE){
+				continue;
+			}
+			printf(" failed\n ! mbedtls_ssl_write returned %d\n\n", ret);
 			goto exit;
 		}
 	}
-
-	len = ret;
-	printf(" %d bytes written\n\n%s", len, (char *) buf);
 
 	/*
 	 * 7. Read the HTTP response
@@ -177,6 +230,8 @@ int main(int argc, char *argv[])
 	printf("  < Read from server:");
 	fflush(stdout);
 
+	req_len = 0;
+	memset(http_req, 0, sizeof(http_req));
 	do {
 		len = sizeof(buf) - 1;
 		memset(buf, 0, sizeof(buf));
@@ -199,9 +254,18 @@ int main(int argc, char *argv[])
 			printf("\n\nEOF\n\n");
 			break;
 		}
-
 		len = ret;
-		printf(" %d bytes read\n\n%s", len, (char *) buf);
+
+		{
+			int sent = 0;
+			while(sent < len){ //send bytes to client
+				int sret = mbedtls_net_send(&client_fd, buf + sent, len - sent);
+				if(sret = 0){
+					printf("failed ! mbedtls_net_send returned %d\n\n", sret);
+				}
+				sent += sret;
+			}
+		}
 	} while (true);
 
 	mbedtls_ssl_close_notify(&ssl);
@@ -217,7 +281,8 @@ exit:
 	}
 
 	mbedtls_net_free(&server_fd);
-
+        mbedtls_net_free(&client_fd);
+        mbedtls_net_free(&listen_fd);
 	mbedtls_x509_crt_free(&cacert);
 	mbedtls_ssl_free(&ssl);
 	mbedtls_ssl_config_free(&conf);
