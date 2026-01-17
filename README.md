@@ -7,6 +7,7 @@ TLS Proxy Attack:
   - Attacker places themselves between client and server by establishing a TLD connection with the client,
     and forwording responses to the server, so that the client is none the wiser.
   - The proxys man-in-the-middle can view, modify, or block traffic from the client to the server.
+
 Common scenarios:
   - Downgrade or weaken certificate verifcation
   - Install a malicious or untrusted root CA
