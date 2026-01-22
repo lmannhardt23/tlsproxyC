@@ -1,4 +1,19 @@
 /*
+ * tlsproxy.c
+ *
+ * Client listens for incoming HTTP request,
+ * establishes a TLS connection to the host and port,
+ * forwards the HTTP resquest back to the server over TLS,
+ * then sends the TLS response back to the client.
+ *
+ * Command line: tlsproxy PORT HOST PORT
+ *
+ * Security notes:
+ *    - Loads the CA certificate bundle to verify hostname.
+ *    - Certificate verification is set to OPTIONAL, in a secure setting
+ *      MBEDTLS_SSL_VERIFY_REQUIRED should be used, alongside updated
+ *      store and verification policys.
+ *
  * Demo based on Mbed TLS's ssl_client1.c, which is Copyright The Mbed
  * TLS Contributors and distributed under the Apache-2.0 license.
  */
@@ -69,7 +84,11 @@ int main(int argc, char *argv[])
 	printf(" ok\n");
 
 	/*
+<<<<<<< HEAD
 	 * 0. Load certificates.
+=======
+	 * Load CA root certificates for verifying server.
+>>>>>>> 02afad65e4b7142c980e49233f8f97555e917295
 	 */
 	printf("  . Loading the CA root certificate ...");
 	fflush(stdout);
@@ -96,7 +115,11 @@ int main(int argc, char *argv[])
 	printf(" ok\n");
 
 	/*
+<<<<<<< HEAD
 	 * 2. Setup stuff.
+=======
+	 * Configures SSL/TLS client
+>>>>>>> 02afad65e4b7142c980e49233f8f97555e917295
 	 */
 	printf("  . Setting up the SSL/TLS structure...");
 	fflush(stdout);
@@ -109,10 +132,17 @@ int main(int argc, char *argv[])
 	printf(" ok\n");
 
 	/*
+<<<<<<< HEAD
 	 * OPTIONAL is not optimal for security,
 	 * but makes interop easier in this simplified example
 	 */
 	mbedtls_ssl_conf_authmode(&conf, MBEDTLS_SSL_VERIFY_OPTIONAL);
+=======
+	 * OPTIONAL but is not optimal for security,
+	 * but makes interop easier in this simplified example.
+	 */
+	mbedtls_ssl_conf_authmode(&conf, MBEDTLS_SSL_VERIFY_OPTIONAL); //varifying certificate is optional for three way handshake
+>>>>>>> 02afad65e4b7142c980e49233f8f97555e917295
 	mbedtls_ssl_conf_ca_chain(&conf, &cacert, NULL);
 	mbedtls_ssl_conf_rng(&conf, mbedtls_ctr_drbg_random, &ctr_drbg);
 
@@ -129,7 +159,11 @@ int main(int argc, char *argv[])
 	mbedtls_ssl_set_bio(&ssl, &server_fd, mbedtls_net_send, mbedtls_net_recv, NULL);
 
 	/*
+<<<<<<< HEAD
 	 * 4. TLS handshake.
+=======
+	 * TLS handshake.
+>>>>>>> 02afad65e4b7142c980e49233f8f97555e917295
 	 */
 	printf("  . Performing the SSL/TLS handshake...");
 	fflush(stdout);
@@ -144,11 +178,17 @@ int main(int argc, char *argv[])
 	printf(" ok\n");
 
 	/*
+<<<<<<< HEAD
 	 * 5. Verify the server certificate.
 	 */
 	printf("  . Verifying peer X.509 certificate...");
 
 	/* In real life, we probably want to bail out when ret != 0 */
+=======
+	 * Verify the server certificate.
+	 */
+	printf("  . Verifying peer X.509 certificate...");
+>>>>>>> 02afad65e4b7142c980e49233f8f97555e917295
 	if ((flags = mbedtls_ssl_get_verify_result(&ssl)) != 0) {
 		char vrfy_buf[512];
 
@@ -160,7 +200,11 @@ int main(int argc, char *argv[])
 	}
 
 	/*
+<<<<<<< HEAD
 	 * 3. Write the GET request.
+=======
+	 * Write the GET request.
+>>>>>>> 02afad65e4b7142c980e49233f8f97555e917295
 	 */
 	printf("  > Write to server:");
 	fflush(stdout);
@@ -225,7 +269,11 @@ int main(int argc, char *argv[])
 	}
 
 	/*
+<<<<<<< HEAD
 	 * 7. Read the HTTP response
+=======
+	 * Read the HTTP response
+>>>>>>> 02afad65e4b7142c980e49233f8f97555e917295
 	 */
 	printf("  < Read from server:");
 	fflush(stdout);
